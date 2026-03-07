@@ -1,0 +1,24 @@
+services:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # GHosting Daemon (Node Manager)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  daemon:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      DAEMON_ID: ${DAEMON_ID:-daemon-01}
+      NODE_NAME: ${NODE_NAME:-Node-1}
+      DAEMON_AUTH_TOKEN: ${DAEMON_AUTH_TOKEN:-ghd_dev_token}
+      DAEMON_PORT: 8443
+      DAEMON_HOST: 0.0.0.0
+      DOCKER_SOCKET: /var/run/docker.sock
+      DATA_DIR: /opt/ghosting/data
+      CONTAINER_PREFIX: gs-
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - daemon_data:/opt/ghosting/data
+
+volumes:
+  daemon_data:

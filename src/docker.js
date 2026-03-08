@@ -329,6 +329,42 @@ export async function writeToContainer(dockerId, command) {
 }
 
 /**
+ * Execute a command inside a container via docker exec (for OS/app containers)
+ * Returns the command output as a string
+ */
+export async function execCommand(dockerId, command) {
+    const container = docker.getContainer(dockerId);
+
+    const exec = await container.exec({
+        Cmd: ["/bin/sh", "-c", command],
+        AttachStdout: true,
+        AttachStderr: true,
+        Tty: true,
+    });
+
+    return new Promise((resolve, reject) => {
+        exec.start({ hijack: true, stdin: false }, (err, stream) => {
+            if (err) return reject(err);
+
+            let output = "";
+            stream.on("data", (chunk) => {
+                output += chunk.toString();
+            });
+            stream.on("end", () => {
+                resolve(output.trim());
+            });
+            stream.on("error", reject);
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                stream.destroy();
+                resolve(output.trim() || "(command timed out)");
+            }, 30000);
+        });
+    });
+}
+
+/**
  * Get container stats (CPU, memory, network)
  */
 export async function getContainerStats(dockerId) {

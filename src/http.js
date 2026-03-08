@@ -570,11 +570,24 @@ export function startHTTPServer() {
                         return;
                     }
 
-                    const { writeToStdin } = await import("./console.js");
-                    await writeToStdin(containerId, command);
+                    // Check env type to decide how to send the command
+                    const container = docker.getContainer(containerId);
+                    const info = await container.inspect();
+                    const envType = info.Config.Labels?.["ghosting.env_type"] || "minecraft";
 
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ success: true }));
+                    if (envType === "minecraft") {
+                        // Minecraft: write to stdin (server reads commands from stdin)
+                        const { writeToStdin } = await import("./console.js");
+                        await writeToStdin(containerId, command);
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ success: true }));
+                    } else {
+                        // Node.js, Python, Docker: use docker exec to run shell commands
+                        const { execCommand } = await import("./docker.js");
+                        const output = await execCommand(containerId, command);
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ success: true, output }));
+                    }
                 } catch (e) {
                     res.writeHead(500, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ message: e.message }));

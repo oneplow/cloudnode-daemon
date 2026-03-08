@@ -287,32 +287,6 @@ export async function deleteServer(dockerId) {
 }
 
 /**
- * Execute a command inside a container
- */
-export async function execCommand(dockerId, command) {
-    const container = docker.getContainer(dockerId);
-    const exec = await container.exec({
-        Cmd: ["sh", "-c", command],
-        AttachStdout: true,
-        AttachStderr: true,
-    });
-
-    const stream = await exec.start();
-    let output = "";
-
-    return new Promise((resolve) => {
-        stream.on("data", (chunk) => {
-            output += chunk.toString();
-        });
-        stream.on("end", () => {
-            resolve(output.trim());
-        });
-        // Timeout after 10s
-        setTimeout(() => resolve(output.trim()), 10000);
-    });
-}
-
-/**
  * Write a command directly to a container's stdin (for game server commands)
  */
 export async function writeToContainer(dockerId, command) {

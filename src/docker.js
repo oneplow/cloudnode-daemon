@@ -104,6 +104,11 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
     // Ensure the internal Docker network exists
     await ensureNetwork();
 
+    // Determine if this is a Pterodactyl yolks image
+    const isYolksImage = image && image.includes("pterodactyl/yolks");
+    // Yolks images use /home/container, standard images use /data
+    const containerDataPath = isYolksImage ? "/home/container" : "/data";
+
     // ── Egg Installation Step ──────────────────────────────
     if (egg?.installScript) {
         console.log(`[Docker] Running egg installation script for ${serverId}...`);
@@ -161,6 +166,18 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
         });
     }
 
+    // If we have an egg startup command, resolve {{VARIABLE}} templates and set STARTUP env
+    if (egg?.startup) {
+        let startupCmd = egg.startup;
+        // Replace {{VAR_NAME}} with actual values from egg variables
+        if (egg.variables) {
+            Object.entries(egg.variables).forEach(([k, v]) => {
+                startupCmd = startupCmd.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v);
+            });
+        }
+        envArray.push(`STARTUP=${startupCmd}`);
+    }
+
     // Expose ports inside container (for documentation), but NO host port bindings
     const exposedPorts = {};
     if (ports && ports.length > 0) {
@@ -180,7 +197,7 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
             Memory: (limits?.memory || 1024) * 1024 * 1024, // MB → bytes
             NanoCpus: Math.floor((limits?.cpu || 100) * 1e7), // % → nanocpus
             DiskQuota: (limits?.disk || 10240) * 1024 * 1024, // MB → bytes
-            Binds: [`${dataPath}:/data`],
+            Binds: [`${dataPath}:${containerDataPath}`],
             // No PortBindings — container ports are NOT exposed on host
             // Traffic goes through TCP proxy instead (proxy.js)
             RestartPolicy: { Name: "unless-stopped" },
@@ -193,7 +210,7 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
         },
     };
 
-    // Add startup command if provided (for non-Minecraft containers)
+    // Add startup command if provided (for non-egg containers like Node.js)
     if (cmd && Array.isArray(cmd) && cmd.length > 0) {
         containerOptions.Cmd = cmd;
     }

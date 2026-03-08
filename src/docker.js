@@ -158,7 +158,7 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
             const fixer = await docker.createContainer({
                 name: `fix-perms-${serverId.substring(0, 12)}`,
                 Image: "alpine:latest",
-                Cmd: ["sh", "-c", "chown -R 1000:1000 /mnt/server && chmod -R 755 /mnt/server"],
+                Cmd: ["sh", "-c", "echo 'eula=true' > /mnt/server/eula.txt && chown -R 1000:1000 /mnt/server && chmod -R 755 /mnt/server"],
                 HostConfig: {
                     Binds: [`${dataPath}:/mnt/server`],
                 },

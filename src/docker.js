@@ -245,9 +245,8 @@ function getGracefulStopCommand(envType) {
     switch (envType) {
         case "minecraft":
             return "stop";
-        case "docker":
+        case "node":
         default:
-            // SIGTERM is enough for generic containers
             return null;
     }
 }

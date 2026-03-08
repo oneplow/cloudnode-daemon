@@ -151,6 +151,23 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
 
         // Cleanup installer container
         await installer.remove({ force: true }).catch(() => { });
+
+        // Fix file permissions — yolks images run as UID 1000 (container user)
+        if (isYolksImage) {
+            console.log(`[Docker] Fixing file permissions for ${serverId}...`);
+            const fixer = await docker.createContainer({
+                name: `fix-perms-${serverId.substring(0, 12)}`,
+                Image: "alpine:latest",
+                Cmd: ["sh", "-c", "chown -R 1000:1000 /mnt/server && chmod -R 755 /mnt/server"],
+                HostConfig: {
+                    Binds: [`${dataPath}:/mnt/server`],
+                },
+            });
+            await fixer.start();
+            await fixer.wait();
+            await fixer.remove({ force: true }).catch(() => { });
+            console.log(`[Docker] Permissions fixed for ${serverId}`);
+        }
     }
 
     // ── Pull main server image ─────────────────────────────
@@ -193,6 +210,8 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
         ExposedPorts: exposedPorts,
         Tty: true,
         OpenStdin: true,
+        // Run as root for yolks images to avoid permission issues with bind mounts
+        User: isYolksImage ? "0" : undefined,
         HostConfig: {
             Memory: (limits?.memory || 1024) * 1024 * 1024, // MB → bytes
             NanoCpus: Math.floor((limits?.cpu || 100) * 1e7), // % → nanocpus

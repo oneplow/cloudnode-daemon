@@ -77,7 +77,7 @@ export async function pullImage(image) {
 /**
  * Create and start a container for any environment type
  */
-export async function createServer({ serverId, image, env, limits, ports, envType }) {
+export async function createServer({ serverId, image, env, limits, ports, envType, cmd }) {
     const containerName = `${config.containerPrefix}${serverId.substring(0, 12)}`;
     const dataPath = `${config.dataDir}/${serverId}`;
 
@@ -101,7 +101,7 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
         });
     }
 
-    const container = await docker.createContainer({
+    const containerOptions = {
         name: containerName,
         Image: image,
         Env: envArray,
@@ -123,7 +123,14 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
             "ghosting.managed": "true",
             "ghosting.env_type": envType || "generic",
         },
-    });
+    };
+
+    // Add startup command if provided (for non-Minecraft containers)
+    if (cmd && Array.isArray(cmd) && cmd.length > 0) {
+        containerOptions.Cmd = cmd;
+    }
+
+    const container = await docker.createContainer(containerOptions);
 
     await container.start();
     console.log(`[Docker] Container started: ${containerName} (${container.id})`);
@@ -223,9 +230,9 @@ function getGracefulStopCommand(envType) {
         case "minecraft":
             return "stop";
         case "node":
-            // Node.js processes handle SIGTERM automatically, no stdin command needed
-            return null;
+        case "python":
         case "docker":
+            // These handle SIGTERM automatically, no stdin command needed
             return null;
         default:
             return null;

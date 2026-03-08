@@ -241,10 +241,10 @@ export function startHTTPServer() {
 
                 if (req.method === "POST") {
                     const body = await readBody(req);
-                    const { serverId, image, env, limits, ports, envType } = JSON.parse(body);
+                    const { serverId, image, env, limits, ports, envType, cmd } = JSON.parse(body);
 
                     try {
-                        const result = await createServer({ serverId, image, env, limits, ports, envType });
+                        const result = await createServer({ serverId, image, env, limits, ports, envType, cmd });
 
                         // Start TCP proxy for the game port
                         if (ports && ports.length > 0) {

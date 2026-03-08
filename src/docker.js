@@ -92,8 +92,9 @@ export async function pullImage(image) {
 
 /**
  * Create and start a container for any environment type
+ * If an egg with installScript is provided, runs the install step first.
  */
-export async function createServer({ serverId, image, env, limits, ports, envType, cmd }) {
+export async function createServer({ serverId, image, env, limits, ports, envType, cmd, egg }) {
     const containerName = `${config.containerPrefix}${serverId.substring(0, 12)}`;
     const dataPath = `${config.dataDir}/${serverId}`;
 
@@ -103,11 +104,62 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
     // Ensure the internal Docker network exists
     await ensureNetwork();
 
-    // Pull image first
+    // ── Egg Installation Step ──────────────────────────────
+    if (egg?.installScript) {
+        console.log(`[Docker] Running egg installation script for ${serverId}...`);
+        const installerImage = egg.installContainer || "ghcr.io/pterodactyl/installers:alpine";
+        const entrypoint = egg.installEntrypoint || "ash";
+
+        await pullImage(installerImage);
+
+        // Build env array from egg variables
+        const installEnv = Object.entries(egg.variables || {}).map(([k, v]) => `${k}=${v}`);
+
+        // Create installer container
+        const installer = await docker.createContainer({
+            name: `install-${serverId.substring(0, 12)}`,
+            Image: installerImage,
+            Env: installEnv,
+            Tty: true,
+            OpenStdin: true,
+            Cmd: [entrypoint, "-c", egg.installScript],
+            HostConfig: {
+                Binds: [`${dataPath}:/mnt/server`],
+            },
+        });
+
+        await installer.start();
+        console.log(`[Docker] Installer started for ${serverId}`);
+
+        // Stream install logs
+        try {
+            const stream = await installer.logs({ follow: true, stdout: true, stderr: true });
+            stream.on("data", (chunk) => {
+                const line = chunk.toString().replace(/[\x00-\x08]/g, "").trim();
+                if (line) console.log(`[Install:${serverId.substring(0, 8)}] ${line}`);
+            });
+        } catch { }
+
+        // Wait for installer to finish
+        await installer.wait();
+        console.log(`[Docker] Installation completed for ${serverId}`);
+
+        // Cleanup installer container
+        await installer.remove({ force: true }).catch(() => { });
+    }
+
+    // ── Pull main server image ─────────────────────────────
     await pullImage(image);
 
     // Build env array
     const envArray = Object.entries(env || {}).map(([k, v]) => `${k}=${v}`);
+
+    // If we have egg variables, add them to the server env too
+    if (egg?.variables) {
+        Object.entries(egg.variables).forEach(([k, v]) => {
+            envArray.push(`${k}=${v}`);
+        });
+    }
 
     // Expose ports inside container (for documentation), but NO host port bindings
     const exposedPorts = {};

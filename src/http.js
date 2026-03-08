@@ -35,7 +35,6 @@ export function startHTTPServer() {
         }
 
         try {
-            // ── Health ──────────────────────────
             if (pathname === "/api/health" && req.method === "GET") {
                 const metrics = await getNodeMetrics();
                 res.writeHead(200, { "Content-Type": "application/json" });
@@ -45,6 +44,44 @@ export function startHTTPServer() {
                     nodeName: config.nodeName,
                     ...metrics,
                 }));
+                return;
+            }
+
+            // ── System Resources (Host) ────────────────
+            if (pathname === "/api/system" && req.method === "GET") {
+                try {
+                    const si = await import("systeminformation");
+                    const [cpu, mem, fsSize] = await Promise.all([
+                        si.cpu(),
+                        si.mem(),
+                        si.fsSize()
+                    ]);
+
+                    // Find the disk where dataDir is mounted, fallback to the first disk
+                    const dataDisk = fsSize.find(d => config.dataDir.startsWith(d.mount)) || fsSize[0];
+
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({
+                        cpu: {
+                            cores: cpu.cores,
+                            physicalCores: cpu.physicalCores,
+                            speed: cpu.speed
+                        },
+                        memory: {
+                            total: mem.total,
+                            free: mem.free,
+                            available: mem.available
+                        },
+                        disk: {
+                            total: dataDisk ? dataDisk.size : 0,
+                            used: dataDisk ? dataDisk.used : 0,
+                            free: dataDisk ? (dataDisk.size - dataDisk.used) : 0
+                        }
+                    }));
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
                 return;
             }
 
@@ -241,10 +278,10 @@ export function startHTTPServer() {
 
                 if (req.method === "POST") {
                     const body = await readBody(req);
-                    const { serverId, image, env, limits, ports, envType, cmd } = JSON.parse(body);
+                    const { serverId, image, env, limits, ports, envType, cmd, egg } = JSON.parse(body);
 
                     try {
-                        const result = await createServer({ serverId, image, env, limits, ports, envType, cmd });
+                        const result = await createServer({ serverId, image, env, limits, ports, envType, cmd, egg });
 
                         // Start TCP proxy for the game port
                         if (ports && ports.length > 0) {

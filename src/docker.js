@@ -136,12 +136,22 @@ export async function createServer({ serverId, image, env, limits, ports, envTyp
         await installer.start();
         console.log(`[Docker] Installer started for ${serverId}`);
 
-        // Stream install logs
+        // Stream install logs (limited to prevent console flooding)
+        let installLogCount = 0;
+        const MAX_INSTALL_LOGS = 50;
         try {
             const stream = await installer.logs({ follow: true, stdout: true, stderr: true });
             stream.on("data", (chunk) => {
-                const line = chunk.toString().replace(/[\x00-\x08]/g, "").trim();
-                if (line) console.log(`[Install:${serverId.substring(0, 8)}] ${line}`);
+                if (installLogCount < MAX_INSTALL_LOGS) {
+                    const line = chunk.toString().replace(/[\x00-\x08]/g, "").trim();
+                    if (line) {
+                        console.log(`[Install:${serverId.substring(0, 8)}] ${line}`);
+                        installLogCount++;
+                    }
+                } else if (installLogCount === MAX_INSTALL_LOGS) {
+                    console.log(`[Install:${serverId.substring(0, 8)}] ... (log output limited, installation continuing)`);
+                    installLogCount++;
+                }
             });
         } catch { }
 

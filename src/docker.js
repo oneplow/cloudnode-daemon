@@ -245,12 +245,9 @@ function getGracefulStopCommand(envType) {
     switch (envType) {
         case "minecraft":
             return "stop";
-        case "node":
-        case "python":
         case "docker":
-            // These handle SIGTERM automatically, no stdin command needed
-            return null;
         default:
+            // SIGTERM is enough for generic containers
             return null;
     }
 }
@@ -320,19 +317,27 @@ export async function execCommand(dockerId, command) {
         exec.start({ hijack: true, stdin: false }, (err, stream) => {
             if (err) return reject(err);
 
-            let output = "";
+            const chunks = [];
             stream.on("data", (chunk) => {
-                output += chunk.toString();
+                chunks.push(chunk);
             });
             stream.on("end", () => {
-                resolve(output.trim());
+                const raw = Buffer.concat(chunks).toString("utf8");
+                // Strip Docker stream multiplexing headers + control chars
+                const clean = raw
+                    .replace(/[\x00-\x08\x0e-\x1f]/g, "")  // control chars (keep \n \r \t)
+                    .replace(/\r\n/g, "\n")
+                    .trim();
+                resolve(clean);
             });
             stream.on("error", reject);
 
             // Timeout after 30 seconds
             setTimeout(() => {
                 stream.destroy();
-                resolve(output.trim() || "(command timed out)");
+                const raw = Buffer.concat(chunks).toString("utf8");
+                const clean = raw.replace(/[\x00-\x08\x0e-\x1f]/g, "").replace(/\r\n/g, "\n").trim();
+                resolve(clean || "(command timed out)");
             }, 30000);
         });
     });

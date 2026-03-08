@@ -189,9 +189,14 @@ export async function powerAction(dockerId, action) {
 
     switch (action) {
         case "start":
+            // Restore restart policy on start
+            await container.update({ RestartPolicy: { Name: "unless-stopped" } });
             await container.start();
             break;
         case "stop": {
+            // Disable restart policy BEFORE stopping so Docker doesn't auto-restart
+            await container.update({ RestartPolicy: { Name: "no" } });
+
             // Try graceful stop based on environment type
             try {
                 const info = await container.inspect();
@@ -207,6 +212,7 @@ export async function powerAction(dockerId, action) {
             break;
         }
         case "restart": {
+            // Keep restart policy as-is for restart
             try {
                 const info = await container.inspect();
                 const envType = info.Config.Labels["ghosting.env_type"] || "generic";
@@ -221,6 +227,8 @@ export async function powerAction(dockerId, action) {
             break;
         }
         case "kill":
+            // Disable restart policy before kill
+            await container.update({ RestartPolicy: { Name: "no" } }).catch(() => { });
             try {
                 await container.kill();
             } catch (err) {

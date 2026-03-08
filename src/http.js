@@ -576,6 +576,10 @@ export function startHTTPServer() {
                     const envType = info.Config.Labels?.["ghosting.env_type"] || "minecraft";
 
                     if (envType === "minecraft") {
+                        // If the command is 'stop', disable restart policy first
+                        if (command.trim().toLowerCase() === "stop") {
+                            await container.update({ RestartPolicy: { Name: "no" } });
+                        }
                         // Minecraft: write to stdin (server reads commands from stdin)
                         const { writeToStdin } = await import("./console.js");
                         await writeToStdin(containerId, command);

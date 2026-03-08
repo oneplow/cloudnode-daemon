@@ -48,9 +48,14 @@ export async function getContainerIP(dockerId) {
 }
 
 /**
- * Pull a Docker image only if missing
+ * Pull a Docker image only if missing (with timeout + validation)
  */
 export async function pullImage(image) {
+    // Validate image name — must look like "name:tag" or "registry/name:tag"
+    if (!image || !/^[a-z0-9._/-]+(?::[a-z0-9._-]+)?$/i.test(image)) {
+        throw new Error(`Invalid Docker image name: "${image}"`);
+    }
+
     try {
         const imageInfo = await docker.getImage(image).inspect();
         if (imageInfo) {
@@ -58,15 +63,26 @@ export async function pullImage(image) {
             return;
         }
     } catch (e) {
-        // Image not found, proceed to pull
+        // Image not found locally, proceed to pull
     }
 
     console.log(`[Docker] Pulling image: ${image}`);
+
+    const PULL_TIMEOUT = 2 * 60 * 1000; // 2 minutes
+
     return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            reject(new Error(`Image pull timed out after 2 minutes: ${image}`));
+        }, PULL_TIMEOUT);
+
         docker.pull(image, (err, stream) => {
-            if (err) return reject(err);
+            if (err) {
+                clearTimeout(timeout);
+                return reject(new Error(`Failed to pull image "${image}": ${err.message}`));
+            }
             docker.modem.followProgress(stream, (err) => {
-                if (err) return reject(err);
+                clearTimeout(timeout);
+                if (err) return reject(new Error(`Failed to pull image "${image}": ${err.message}`));
                 console.log(`[Docker] Image pulled: ${image}`);
                 resolve();
             });
